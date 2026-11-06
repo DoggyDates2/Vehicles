@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DoggyDates Vehicles</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  html,body{margin:0;height:100%;font:14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;color:#222}
+  #map{position:absolute;inset:0;right:360px}
+  #side{position:absolute;top:0;right:0;bottom:0;width:360px;background:#fff;border-left:1px solid #ddd;overflow:auto;box-sizing:border-box;padding:14px}
+  #side h1{font-size:17px;margin:0 0 10px}
+  #search{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #bbb;border-radius:6px;margin-bottom:10px}
+  .lot-pin{background:#1b1b1b;color:#fff;font-weight:700;font-size:12px;padding:3px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .car-pin{display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px 2px 7px;border-radius:10px;white-space:nowrap;border:2px solid transparent;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);cursor:grab;min-width:150px}
+  .car-pin.spare{background:#9a9a9a}
+  .car-pin.attn{border-color:#e02020}
+  .car-pin .drv{font-weight:700;min-width:52px}
+  .car-pin .nm{font-weight:500;flex:1;opacity:.95}
+  .car-pin .oil{font-size:12px;line-height:1}
+  #oilbox{background:#fff8e6;border:1px solid #f0d58c;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:13px}
+  #oilbox b{display:block;margin-bottom:4px}
+  #oilbox div{cursor:pointer;padding:2px 0}
+  #oilbox div:hover{text-decoration:underline}
+  .car-pin .seats{background:rgba(255,255,255,.9);color:#222;font-weight:700;border-radius:8px;padding:0 6px;min-width:14px;text-align:center}
+  .card h2{font-size:16px;margin:4px 0 2px}
+  .card .sub{color:#666;margin-bottom:10px}
+  .card label{display:block;font-size:12px;color:#555;margin:9px 0 3px}
+  .card input,.card select,.card textarea{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #bbb;border-radius:5px;font:inherit}
+  .card textarea{min-height:54px;resize:vertical}
+  .card textarea.status{border-color:#e02020;background:#fff6f6}
+  .btn{display:inline-block;padding:8px 14px;border:0;border-radius:6px;background:#1b1b1b;color:#fff;font-weight:600;cursor:pointer;margin-top:12px}
+  .btn.secondary{background:#e8e8e8;color:#222}
+  .log{white-space:pre-wrap;background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;max-height:200px;overflow:auto;margin-top:6px}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  .muted{color:#777;font-size:12px}
+  #legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;margin-bottom:10px}
+  #legend span{cursor:pointer;user-select:none;padding:2px 6px;border-radius:10px;border:1px solid #ddd}
+  #legend span.off{opacity:.35;text-decoration:line-through}
+  #legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:5px;background:var(--c);margin-right:5px;vertical-align:middle}
+  .lotlist h3{font-size:13px;margin:14px 0 4px}
+  .lotlist div{padding:3px 0;cursor:pointer}
+  .lotlist div:hover{text-decoration:underline}
+  #toast{position:absolute;left:12px;bottom:12px;background:#1b1b1b;color:#fff;padding:8px 12px;border-radius:6px;display:none;z-index:1000}
+  @media (max-width:800px){#map{right:0;bottom:45%}#side{top:55%;left:0;width:auto;border-left:0;border-top:1px solid #ddd}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="side">
+  <h1>Vehicles</h1>
+  <input id="search" placeholder="Search car, plate, or driver">
+  <div id="legend"></div>
+  <div id="oilbox" style="display:none"></div>
+  <div id="panel"><p class="muted">Drag a car to a lot to move it. Click a car for notes.</p></div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyTaQa0lB9Dmtg2NM0hJ3J8cOXHS2mYp57yeDbOPgojf4CfoZtCQ9oclNVL7x34RxQw/exec';
+
+let data = { cars: [], lots: [], assignments: [] };
+let hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem('vehHidden') || '[]')); } catch(e) {}
+function categoryOf(c, drv){ if (c.Condition && c.Condition !== 'Available') return c.Condition; return drv ? 'In use' : 'Available'; }
+document.addEventListener('DOMContentLoaded', () => {
+  const cats = [['In use', IN_USE]].concat(Object.entries(CONDITIONS));
+  const lg = document.getElementById('legend');
+  lg.innerHTML = cats.map(([k,v]) => `<span data-cat="${k}" class="${hidden.has(k) ? 'off' : ''}" style="--c:${v}">${k}</span>`).join('') + '<span style="--c:#fff;outline:2px solid #e02020;outline-offset:-2px;cursor:default">Needs attention</span>';
+  lg.querySelectorAll('[data-cat]').forEach(el => el.onclick = () => {
+    const k = el.dataset.cat; hidden.has(k) ? hidden.delete(k) : hidden.add(k);
+    el.classList.toggle('off', hidden.has(k));
+    localStorage.setItem('vehHidden', JSON.stringify([...hidden])); render();
+  });
+});
+let markers = [], lotMarkers = [], selected = null, swapFrom = null;
+
+const map = L.map('map', { zoomControl: true }).setView([42.25, -71.3], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 }).addTo(map);
+
+function plateOf(code){
+  const c = String(code || '').replace(/[^A-Za-z0-9]+$/, '').trim();
+  const m = c.match(/([A-Z]?\d[A-Z0-9]*)$/);
+  return (m ? m[1] : c).toUpperCase();
+}
+function shortLot(a){ return String(a).split(',')[0]; }
+const CONDITIONS = { 'Available': '#2b8a3e', 'In shop, usable': '#e67700', 'Not usable': '#c92a2a' };
+const IN_USE = '#7a7a7a';
+const OIL_DAYS = 50, OIL_WARN = 3;
+function workDaysBetween(a, b){ let d = new Date(a), n = 0; d.setHours(0,0,0,0); b = new Date(b); b.setHours(0,0,0,0); while (d < b){ d.setDate(d.getDate()+1); if (d.getDay() % 6) n++; } return n; }
+function oilDaysLeft(c){ if (!c.OilChangedOn) return null; const t = new Date(c.OilChangedOn); if (isNaN(t)) return null; return (Number(c.OilIntervalDays) || OIL_DAYS) - workDaysBetween(t, new Date()); }
+function oilText(c){ const d = oilDaysLeft(c); if (d === null) return c.OilDue === 'Y' ? 'flagged' : ''; return d < 0 ? `overdue ${-d} days` : d === 0 ? 'due today' : `due in ${d} days`; }
+function oilDue(c){ const d = oilDaysLeft(c); return c.OilDue === 'Y' || (d !== null && d <= OIL_WARN); }
+function colorOf(c, drv){ if (c.Condition && c.Condition !== 'Available') return CONDITIONS[c.Condition]; return drv ? IN_USE : CONDITIONS['Available']; }
+const palette = ['#2a6fdb','#d9480f','#2b8a3e','#862e9c','#c92a2a','#0b7285','#e67700','#5c5f66','#a61e4d','#1864ab','#5f3dc4','#087f5b'];
+function colorFor(name){ let h = 0; for (const ch of name) h = (h*31 + ch.charCodeAt(0)) >>> 0; return palette[h % palette.length]; }
+function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
+
+async function load(){
+  const r = await fetch(WEBAPP_URL); data = await r.json(); render();
+}
+async function post(body){
+  toast('Saving...');
+  const r = await fetch(WEBAPP_URL, { method: 'POST', body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!j.ok) { toast('Error: ' + j.error); throw new Error(j.error); }
+  data = j; render(); toast('Saved');
+  return j;
+}
+
+function driverOf(plate){ const a = data.assignments.find(x => x.car && plateOf(x.car) === plate); return a ? a.driver : ''; }
+function codeOf(car){ const a = data.assignments.find(x => x.car && plateOf(x.car) === car.Plate); return a ? a.car : car.Code; }
+function labelOf(car){ return codeOf(car); }
+
+function render(){
+  markers.forEach(m => map.removeLayer(m)); lotMarkers.forEach(m => map.removeLayer(m)); markers = []; lotMarkers = [];
+  const byLot = {};
+  data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
+  const offMap = [];
+  data.lots.forEach(lot => {
+    const cars = (byLot[lot.address] || []).filter(c => !hidden.has(categoryOf(c, driverOf(c.Plate))));
+    if (!lot.lat) { offMap.push({ lot, cars }); return; }
+    const ll = [lot.lat, lot.lng];
+    const lp = L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${shortLot(lot.address)} (${cars.length})</div>`, iconAnchor: [0, 10] }), interactive: false, zIndexOffset: 500 }).addTo(map);
+    lotMarkers.push(lp);
+    cars.forEach((c, i) => {
+      const drv = driverOf(c.Plate);
+      const cls = 'car-pin' + (c.Status ? ' attn' : '');
+      const style = `background:${colorOf(c, drv)}`;
+      const html = `<div class="${cls}" style="${style}" data-plate="${c.Plate}"><span class="drv">${drv || 'spare'}</span><span class="seats">${c.Seats || ''}</span><span class="nm">${c.Tag || ''}</span>${oilDue(c) ? '<span class="oil" title="Oil change due">&#128738;</span>' : ''}</div>`;
+      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconAnchor: [0, -12 - i*20] }), zIndexOffset: 100 }).addTo(map);
+      m.car = c;
+      m.bindTooltip(`${codeOf(c)}<br>Plate ${c.Plate}${c.Year ? '<br>' + [c.Year, c.Make, c.Model].filter(Boolean).join(' ') : ''}`, { direction: 'right', offset: [160, -4 - i*20] });
+      m.on('click', () => swapFrom ? doSwap(c.Plate) : openCard(c.Plate));
+      m.on('dragend', async e => {
+        const p = e.target.getLatLng(); let best = null, bestD = 1e9;
+        data.lots.forEach(l => { if (!l.lat) return; const d = map.distance(p, [l.lat, l.lng]); if (d < bestD) { bestD = d; best = l; } });
+        if (best && bestD < 600 && best.address !== c.Lot) {
+          try { await post({ action: 'setLot', plate: c.Plate, lot: best.address }); } catch(err) { render(); }
+        } else { render(); if (!best || bestD >= 600) toast('Drop closer to a lot'); }
+      });
+      markers.push(m);
+    });
+  });
+  // cars whose lot isn't in the Lots tab
+  const known = new Set(data.lots.map(l => l.address));
+  const orphans = data.cars.filter(c => !known.has(c.Lot));
+  if (orphans.length) offMap.push({ lot: { address: 'No lot set' }, cars: orphans });
+  renderOffMap(offMap);
+  const due = data.cars.filter(oilDue);
+  const ob = document.getElementById('oilbox');
+  ob.style.display = due.length ? 'block' : 'none';
+  ob.innerHTML = `<b>&#128738; Oil change due (${due.length})</b>` + due.map(c => `<div data-plate="${c.Plate}">${driverOf(c.Plate) || 'spare'} &middot; ${codeOf(c)}${oilText(c) ? ` &middot; ${oilText(c)}` : ''}</div>`).join('');
+  ob.querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
+  if (selected) openCard(selected, true);
+}
+
+function renderOffMap(list){
+  const el = document.getElementById('offmap') || Object.assign(document.createElement('div'), { id: 'offmap', className: 'lotlist' });
+  el.innerHTML = '';
+  list.forEach(({ lot, cars }) => {
+    if (!cars.length) return;
+    el.insertAdjacentHTML('beforeend', `<h3>${lot.address}</h3>` + cars.map(c => `<div data-plate="${c.Plate}">${labelOf(c)} <span class="muted">${driverOf(c.Plate) || 'spare'}</span></div>`).join(''));
+  });
+  el.querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
+  document.getElementById('side').appendChild(el);
+}
+
+async function doSwap(plateB){
+  const plateA = swapFrom; swapFrom = null; document.body.style.cursor = '';
+  if (plateA === plateB) { toast('Swap cancelled'); return; }
+  const dA = driverOf(plateA), dB = driverOf(plateB);
+  if (!dA && !dB) { toast('Both cars are spare, nothing to swap'); return; }
+  if (dA) await post({ action: 'setDriver', plate: plateB, driver: dA });
+  else await post({ action: 'setDriver', plate: plateA, driver: dB });
+  openCard(plateB, true);
+}
+
+function openCard(plate, keep){
+  const c = data.cars.find(x => x.Plate === plate); if (!c) return;
+  selected = plate;
+  const drv = driverOf(plate);
+  const drivers = data.assignments.map(a => a.driver).sort();
+  const opts = ['<option value="">Spare (no driver)</option>'].concat(drivers.map(d => `<option ${d === drv ? 'selected' : ''}>${d}</option>`)).join('');
+  const lotOpts = data.lots.map(l => `<option ${l.address === c.Lot ? 'selected' : ''}>${l.address}</option>`).join('');
+  const f = k => (c[k] || '').toString().replace(/"/g, '&quot;');
+  document.getElementById('panel').innerHTML = `
+  <div class="card">
+    <h2>${labelOf(c)}</h2>
+    <div class="sub">${[c.Year, c.Make, c.Model].filter(Boolean).join(' ')} ${c.Plate ? '&nbsp; plate ' + c.Plate : ''}</div>
+    <div class="row">
+      <div><label>Tag shown on the map (e.g. broken horn)</label><input id="f_Tag" value="${f('Tag')}"></div>
+      <div style="flex:0 0 80px"><label>Seats</label><input id="f_Seats" value="${f('Seats')}"></div>
+    </div>
+    <label>Condition</label><select id="f_Condition">${Object.keys(CONDITIONS).map(k => `<option ${k === c.Condition ? 'selected' : ''}>${k}</option>`).join('')}</select>
+    <label>Driver</label><select id="f_driver">${opts}</select>
+    <label>Parked at</label><select id="f_lot">${lotOpts}<option value="__new">Type a new address...</option></select>
+    <input id="f_newlot" placeholder="e.g. 168 Linden St, Wellesley, MA" style="display:none;margin-top:6px">
+    <label>Needs attention / status</label><textarea id="f_Status" class="status">${f('Status')}</textarea>
+    <label>Quirks</label><textarea id="f_Quirks">${f('Quirks')}</textarea>
+    <div class="row">
+      <div><label>Inspection due</label><input id="f_InspectionDue" value="${f('InspectionDue')}"></div>
+      <div><label>Oil changed on</label><input id="f_OilChangedOn" value="${f('OilChangedOn')}" placeholder="M/D/YYYY"></div>
+      <div><label>Oil interval (work days)</label><input id="f_OilIntervalDays" value="${f('OilIntervalDays') || OIL_DAYS}"></div>
+    </div>
+    <p class="muted">${oilText(c) ? 'Oil change ' + oilText(c) : 'No oil change date yet'}</p>
+    <label>Keys</label><input id="f_Keys" value="${f('Keys')}">
+    <label>Exterior damage</label><textarea id="f_Exterior">${f('Exterior')}</textarea>
+    <label>Stickers</label><textarea id="f_Stickers">${f('Stickers')}</textarea>
+    <div class="row">
+      <button class="btn" id="save">Save changes</button>
+      ${oilDue(c) ? '<button class="btn secondary" id="oildone">Oil changed</button>' : '<button class="btn secondary" id="oilflag">Flag for oil</button>'}
+    </div>
+    <button class="btn secondary" id="swap" style="width:100%">Swap with another car (then click it on the map)</button>
+    <label>Add a note</label><input id="f_note" placeholder="e.g. oil change due; scheduled">
+    <button class="btn secondary" id="addnote">Add note</button>
+    <label>History</label><div class="log">${(c.Log || '').replace(/</g,'&lt;') || '<span class="muted">No history yet</span>'}</div>
+    <p class="muted">Last updated ${c.Updated || ''}</p>
+  </div>`;
+  if (!keep && c.Lot) { const l = data.lots.find(x => x.address === c.Lot); if (l && l.lat) map.setView([l.lat, l.lng], Math.max(map.getZoom(), 14)); }
+
+  document.getElementById('f_lot').onchange = e => { document.getElementById('f_newlot').style.display = e.target.value === '__new' ? 'block' : 'none'; };
+  document.getElementById('save').onclick = async () => {
+    const fields = {}; ['Tag','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = document.getElementById('f_' + k).value);
+    const newDrv = document.getElementById('f_driver').value, newLot = document.getElementById('f_lot').value;
+    await post({ action: 'saveCar', plate, fields });
+    if (newLot === '__new') { const a = document.getElementById('f_newlot').value.trim(); if (a) await post({ action: 'addLot', plate, lot: a }); }
+    else if (newLot !== c.Lot) await post({ action: 'setLot', plate, lot: newLot });
+    if (newDrv !== drv) await post({ action: 'setDriver', plate, driver: newDrv });
+  };
+  document.getElementById('swap').onclick = () => { swapFrom = plate; document.body.style.cursor = 'crosshair'; toast('Now click the car to swap with'); };
+  const od = document.getElementById('oildone'); if (od) od.onclick = () => post({ action: 'oilDone', plate });
+  const of = document.getElementById('oilflag'); if (of) of.onclick = () => post({ action: 'oilFlag', plate });
+  document.getElementById('addnote').onclick = async () => {
+    const t = document.getElementById('f_note').value.trim(); if (!t) return;
+    await post({ action: 'addLog', plate, text: t });
+  };
+}
+
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  markers.forEach(m => {
+    const c = m.car, hit = !q || codeOf(c).toLowerCase().includes(q) || c.Plate.toLowerCase().includes(q) || driverOf(c.Plate).toLowerCase().includes(q) || (c.Tag || '').toLowerCase().includes(q);
+    m.getElement().style.opacity = hit ? 1 : 0.15;
+  });
+  if (q) { const m = markers.find(m => m.getElement().style.opacity == 1); if (m) map.panTo(m.getLatLng()); }
+});
+
+load().catch(e => toast('Could not load: ' + e));
+</script>
+</body>
+</html>
