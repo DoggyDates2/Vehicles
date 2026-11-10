@@ -34,7 +34,7 @@
   #attnbtn .n.zero{background:var(--line);color:var(--muted)}
 
   /* pins */
-  .lot-pin{background:var(--accent);color:#fff;font-weight:600;font-size:12px;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  .lot-pin{display:inline-block;background:var(--accent);color:#fff;font-weight:600;font-size:12px;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
   .lot-pin b{opacity:.65;font-weight:500;margin-left:6px}
   .car-pin{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11.5px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
   .car-pin .bar{width:5px;align-self:stretch;background:var(--c);flex:none}
@@ -136,21 +136,21 @@ const CATS = {
 };
 const MANUAL = ['Available', 'In shop, usable', 'Not usable'];
 
-let data = { cars: [], lots: [], assignments: [] };
+let data = { cars: [], lots: [], drivers: [] };
 let markers = [], lotMarkers = [], selected = null, swapFrom = null, panelMode = null;
 let hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem('vehHidden') || '[]')); } catch(e) {}
 
 const map = L.map('map', { zoomControl: false }).setView([42.25, -71.3], 11);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 function plateOf(code){ const c = String(code || '').replace(/[^A-Za-z0-9]+$/, '').trim(); const m = c.match(/([A-Z]?\d[A-Z0-9]*)$/); return (m ? m[1] : c).toUpperCase(); }
 function shortLot(a){ return String(a || '').split(',')[0]; }
-function driverOf(plate){ const a = data.assignments.find(x => x.car && plateOf(x.car) === plate); return a ? a.driver : ''; }
-function codeOf(car){ const a = data.assignments.find(x => x.car && plateOf(x.car) === car.Plate); return a ? a.car : car.Code; }
+function driverOf(plate){ const c = data.cars.find(x => x.Plate === plate); return c ? (c.Driver || '') : ''; }
+function codeOf(car){ return car.Code; }
 function catOf(c){ if (c.Condition && c.Condition !== 'Available') return c.Condition; return driverOf(c.Plate) ? 'In use' : 'Available'; }
 function colorOf(c){ return CATS[catOf(c)]; }
 function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
@@ -189,19 +189,19 @@ function render(){
     const cars = (byLot[lot.address] || []).filter(c => !hidden.has(catOf(c)));
     if (!lot.lat) return;
     const ll = [lot.lat, lot.lng];
-    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12] }), interactive: false, zIndexOffset: 500 }).addTo(map));
+    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12], iconSize: null }), interactive: false, zIndexOffset: 500 }).addTo(map));
     if (map.getZoom() < SHOW_CARS_ZOOM) return;
     cars.forEach((c, i) => {
       const col = Math.floor(i / COL_MAX), rowi = i % COL_MAX;
       const drv = driverOf(c.Plate);
       const html = `<div class="car-pin ${c.Status ? 'attn' : ''}" style="--c:${colorOf(c)}">
           <span class="bar"></span>
-          <span class="drv ${drv ? '' : 'spare'}">${esc(drv || 'spare')}</span>
+          <span class="drv ${drv ? '' : 'spare'}">${esc(drv || 'unassigned')}</span>
           <span class="tag">${esc(c.Tag || '')}</span>
           ${oilDue(c) ? '<span class="ico" title="Oil change due">&#128738;</span>' : ''}
           <span class="seats">${esc(c.Seats || '')}</span>
         </div>`;
-      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconAnchor: [-col*198, -16 - rowi*27] }), zIndexOffset: 100 }).addTo(map);
+      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconSize: null, iconAnchor: [-col*198, -16 - rowi*27] }), zIndexOffset: 100 }).addTo(map);
       m.car = c;
       m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-6 - col*0, -4 - rowi*27] });
       m.on('click', () => swapFrom ? doSwap(c.Plate) : openCard(c.Plate));
@@ -262,9 +262,9 @@ function openCard(plate, keep){
   const c = data.cars.find(x => x.Plate === plate); if (!c) return;
   selected = plate; panelMode = 'car'; $('panel').classList.add('open');
   const drv = driverOf(plate), cat = catOf(c);
-  const drivers = data.assignments.map(a => a.driver).sort();
+  const drivers = data.drivers || [];
   const f = k => esc(c[k]);
-  const hist = (c.Log || '').split('\n').filter(Boolean).map(l => { const m = l.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4}):\s*(.*)$/); return m ? `<div><span class="d">${esc(m[1])}</span>${esc(m[2])}</div>` : `<div>${esc(l)}</div>`; }).join('');
+  const hist = (c.History || '').split('\n').filter(Boolean).map(l => { const m = l.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4}):\s*(.*)$/); return m ? `<div><span class="d">${esc(m[1])}</span>${esc(m[2])}</div>` : `<div>${esc(l)}</div>`; }).join('');
   const ot = oilText(c);
   const condOpts = (drv ? [`<option value="Available" ${cat === 'In use' ? 'selected' : ''}>In use</option>`] : [])
     .concat(MANUAL.filter(k => !(drv && k === 'Available')).map(k => `<option ${k === c.Condition ? 'selected' : ''}>${k}</option>`)).join('');
@@ -289,7 +289,7 @@ function openCard(plate, keep){
 
     <div class="sec"><h4>Assignment</h4>
       <div class="g2">
-        <div class="f"><label>Driver</label><select id="f_driver"><option value="">Spare (no driver)</option>${drivers.map(d => `<option ${d === drv ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select></div>
+        <div class="f"><label>Driver</label><select id="f_driver"><option value="">Unassigned</option>${drivers.map(d => `<option ${d === drv ? 'selected' : ''}>${esc(d)}</option>`).join('')}<option value="__other">Someone else…</option></select><input id="f_newdrv" placeholder="Type the driver's name" style="display:none;margin-top:6px"></div>
         <div class="f"><label>Condition</label><select id="f_Condition">${condOpts}</select></div>
       </div>
       <div class="f" style="margin-top:10px"><label>Parked at</label>
@@ -329,6 +329,7 @@ function openCard(plate, keep){
   if (!keep && c.Lot) { const l = data.lots.find(x => x.address === c.Lot); if (l && l.lat) map.panTo([l.lat, l.lng]); }
 
   $('closep').onclick = closePanel;
+  $('f_driver').onchange = e => { $('f_newdrv').style.display = e.target.value === '__other' ? 'block' : 'none'; };
   $('f_lot').onchange = e => { $('f_newlot').style.display = e.target.value === '__new' ? 'block' : 'none'; };
   $('swap').onclick = () => { swapFrom = plate; document.body.style.cursor = 'crosshair'; toast('Now click the car to swap with'); };
   const od = $('oildone'); if (od) od.onclick = () => post({ action: 'oilDone', plate });
@@ -337,7 +338,8 @@ function openCard(plate, keep){
   $('f_note').onkeydown = e => { if (e.key === 'Enter') $('addnote').click(); };
   $('save').onclick = async () => {
     const fields = {}; ['Tag','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = $('f_' + k).value);
-    const newDrv = $('f_driver').value, newLot = $('f_lot').value;
+    let newDrv = $('f_driver').value; if (newDrv === '__other') newDrv = $('f_newdrv').value.trim();
+    const newLot = $('f_lot').value;
     await post({ action: 'saveCar', plate, fields });
     if (newLot === '__new') { const a = $('f_newlot').value.trim(); if (a) await post({ action: 'addLot', plate, lot: a }); }
     else if (newLot !== c.Lot) await post({ action: 'setLot', plate, lot: newLot });
