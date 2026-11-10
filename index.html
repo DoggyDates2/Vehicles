@@ -5,169 +5,249 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DoggyDates Vehicles</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;height:100%;font:14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;color:#222}
-  #map{position:absolute;inset:0;right:360px}
-  #side{position:absolute;top:0;right:0;bottom:0;width:360px;background:#fff;border-left:1px solid #ddd;overflow:auto;box-sizing:border-box;padding:14px}
-  #side h1{font-size:17px;margin:0 0 10px}
-  #search{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #bbb;border-radius:6px;margin-bottom:10px}
-  .lot-pin{background:#1b1b1b;color:#fff;font-weight:700;font-size:12px;padding:3px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
-  .car-pin{display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px 2px 7px;border-radius:10px;white-space:nowrap;border:2px solid transparent;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);cursor:grab;min-width:150px}
-  .car-pin.spare{background:#9a9a9a}
-  .car-pin.attn{border-color:#e02020}
-  .car-pin .drv{font-weight:700;min-width:52px}
-  .car-pin .nm{font-weight:500;flex:1;opacity:.95}
-  .car-pin .oil{font-size:12px;line-height:1}
-  #oilbox{background:#fff8e6;border:1px solid #f0d58c;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:13px}
-  #oilbox b{display:block;margin-bottom:4px}
-  #oilbox div{cursor:pointer;padding:2px 0}
-  #oilbox div:hover{text-decoration:underline}
-  .car-pin .seats{background:rgba(255,255,255,.9);color:#222;font-weight:700;border-radius:8px;padding:0 6px;min-width:14px;text-align:center}
-  .card h2{font-size:16px;margin:4px 0 2px}
-  .card .sub{color:#666;margin-bottom:10px}
-  .card label{display:block;font-size:12px;color:#555;margin:9px 0 3px}
-  .card input,.card select,.card textarea{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #bbb;border-radius:5px;font:inherit}
-  .card textarea{min-height:54px;resize:vertical}
-  .card textarea.status{border-color:#e02020;background:#fff6f6}
-  .btn{display:inline-block;padding:8px 14px;border:0;border-radius:6px;background:#1b1b1b;color:#fff;font-weight:600;cursor:pointer;margin-top:12px}
-  .btn.secondary{background:#e8e8e8;color:#222}
-  .log{white-space:pre-wrap;background:#f6f6f6;border-radius:6px;padding:8px;font-size:12px;max-height:200px;overflow:auto;margin-top:6px}
-  .row{display:flex;gap:8px}
-  .row>*{flex:1}
-  .muted{color:#777;font-size:12px}
-  #legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;margin-bottom:10px}
-  #legend span{cursor:pointer;user-select:none;padding:2px 6px;border-radius:10px;border:1px solid #ddd}
-  #legend span.off{opacity:.35;text-decoration:line-through}
-  #legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:5px;background:var(--c);margin-right:5px;vertical-align:middle}
-  .lotlist h3{font-size:13px;margin:14px 0 4px}
-  .lotlist div{padding:3px 0;cursor:pointer}
-  .lotlist div:hover{text-decoration:underline}
-  #toast{position:absolute;left:12px;bottom:12px;background:#1b1b1b;color:#fff;padding:8px 12px;border-radius:6px;display:none;z-index:1000}
-  @media (max-width:800px){#map{right:0;bottom:45%}#side{top:55%;left:0;width:auto;border-left:0;border-top:1px solid #ddd}}
+  :root{
+    --ink:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --bg:#f7f8fa; --card:#fff;
+    --inuse:#8b8f96; --avail:#22a06b; --shop:#f08c00; --dead:#d63939; --attn:#e03131;
+    --accent:#1b1d21; --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:14px/1.4 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+  #map{position:absolute;inset:0}
+  .leaflet-container{font:inherit}
+
+  /* top bar */
+  #top{position:absolute;top:12px;left:12px;right:12px;z-index:900;display:flex;gap:10px;align-items:center;pointer-events:none}
+  #top>*{pointer-events:auto}
+  .brand{background:var(--accent);color:#fff;font-weight:700;padding:10px 14px;border-radius:var(--r);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  #search{flex:0 1 320px;padding:10px 14px;border:0;border-radius:var(--r);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);font:inherit;outline:none}
+  #search:focus{box-shadow:0 0 0 3px rgba(27,29,33,.15)}
+  #filters{display:flex;gap:6px;background:#fff;padding:6px;border-radius:var(--r);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  .chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;cursor:pointer;user-select:none;font-weight:500;font-size:13px}
+  .chip:hover{background:var(--bg)}
+  .chip.off{opacity:.4}
+  .chip i{width:9px;height:9px;border-radius:50%;background:var(--c);display:inline-block}
+  .chip b{font-weight:600;color:var(--muted);margin-left:2px}
+  #attnbtn{margin-left:auto;background:#fff;border:0;border-radius:var(--r);padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12);display:flex;gap:8px;align-items:center}
+  #attnbtn .n{background:var(--attn);color:#fff;border-radius:10px;padding:1px 7px;font-size:12px}
+  #attnbtn .n.zero{background:var(--line);color:var(--muted)}
+
+  /* pins */
+  .lot-pin{background:var(--accent);color:#fff;font-weight:600;font-size:12px;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  .lot-pin b{opacity:.65;font-weight:500;margin-left:6px}
+  .car-pin{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11.5px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
+  .car-pin .bar{width:5px;align-self:stretch;background:var(--c);flex:none}
+  .car-pin .drv{font-weight:700;flex:none}
+  .car-pin .drv.spare{color:var(--muted);font-weight:500;font-style:italic}
+  .car-pin .tag{max-width:160px;overflow:hidden;text-overflow:ellipsis;color:#374151}
+  .car-pin .tag:empty{display:none}
+  .car-pin .seats{flex:none;font-weight:700;background:var(--bg);border-radius:6px;padding:1px 5px;font-size:10.5px;color:#374151}
+  .car-pin .ico{flex:none;font-size:11px;line-height:1}
+  .car-pin.attn{border-color:var(--attn)}
+  .car-pin:hover{box-shadow:0 3px 10px rgba(0,0,0,.3)}
+
+  /* side panel */
+  #panel{position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--card);box-shadow:-6px 0 24px rgba(0,0,0,.12);z-index:950;transform:translateX(105%);transition:transform .18s ease}
+  #panel.open{transform:none}
+  #pbody{height:100%;display:flex;flex-direction:column}
+  .ph{position:relative;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+  .ph .close{position:absolute;top:12px;right:12px;border:0;background:var(--bg);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px}
+  .ph h2{margin:0;font-size:20px;font-weight:700;line-height:1.2;padding-right:36px}
+  .ph .sub{color:var(--muted);margin-top:2px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 20px 4px}
+  .btn{border:0;border-radius:10px;padding:10px 12px;font:inherit;font-weight:600;cursor:pointer;background:var(--bg);color:var(--ink)}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.warn{background:#fff4e0;color:#8a5a00}
+  .btn:hover{filter:brightness(.96)}
+  .pb{overflow:auto;flex:1;padding:6px 20px 24px}
+  .sec{margin-top:16px}
+  .sec h4{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .f{margin-bottom:10px}
+  .f label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .f input,.f select,.f textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff}
+  .f input:focus,.f select:focus,.f textarea:focus{outline:none;border-color:#9ca3af;box-shadow:0 0 0 3px rgba(27,29,33,.08)}
+  .f textarea{min-height:60px;resize:vertical}
+  .f textarea.status{border-color:#f5b5b5;background:#fff8f8}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .g2 .f{margin-bottom:0}
+  .note{color:var(--muted);font-size:12px}
+  .oilline{display:flex;align-items:center;justify-content:space-between;background:#fff8e6;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-weight:500;font-size:13px}
+  .oilline.ok{background:var(--bg);color:var(--muted);font-weight:400}
+  .hist{border-left:2px solid var(--line);margin-left:6px;padding-left:12px}
+  .hist div{position:relative;padding:3px 0 9px;font-size:13px}
+  .hist div::before{content:'';position:absolute;left:-17px;top:9px;width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+  .hist .d{color:var(--muted);font-size:11.5px;display:block}
+  .addnote{display:flex;gap:8px}
+  .addnote input{flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .savebar{position:sticky;bottom:0;background:linear-gradient(transparent,#fff 30%);padding:14px 0 0;margin-top:8px}
+  .savebar .btn{width:100%}
+
+  /* attention list */
+  .alist h3{margin:14px 0 6px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .alist h3 .n{color:var(--muted);font-weight:500}
+  .arow{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
+  .arow:hover{background:var(--bg)}
+  .arow i{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
+  .arow .t{flex:1;min-width:0}
+  .arow .t b{display:block;font-weight:600}
+  .arow .t span{color:var(--muted);font-size:12px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .arow .r{color:var(--muted);font-size:12px;flex:none}
+
+  #zoomhint{position:absolute;left:50%;top:70px;transform:translateX(-50%);background:#fff;color:var(--muted);padding:6px 12px;border-radius:999px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:900;display:none}
+  #toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:9px 16px;border-radius:999px;display:none;z-index:1000;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  @media (max-width:760px){
+    #top{flex-wrap:wrap}
+    #search{flex-basis:100%}
+    #filters{flex-wrap:wrap}
+    #panel{width:100%}
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div id="side">
-  <h1>Vehicles</h1>
-  <input id="search" placeholder="Search car, plate, or driver">
-  <div id="legend"></div>
-  <div id="oilbox" style="display:none"></div>
-  <div id="panel"><p class="muted">Drag a car to a lot to move it. Click a car for notes.</p></div>
+
+<div id="top">
+  <div class="brand">Vehicles</div>
+  <input id="search" placeholder="Search driver, car, plate, tag">
+  <div id="filters"></div>
+  <button id="attnbtn">Attention <span class="n zero" id="attnCount">0</span></button>
 </div>
+
+<div id="panel"><div id="pbody"></div></div>
+<div id="zoomhint">Zoom in to see cars</div>
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyTaQa0lB9Dmtg2NM0hJ3J8cOXHS2mYp57yeDbOPgojf4CfoZtCQ9oclNVL7x34RxQw/exec';
+const OIL_DAYS = 50, OIL_WARN = 3;
+const SHOW_CARS_ZOOM = 13;   // below this zoom only lot labels show
+const COL_MAX = 6;           // cars per column under a lot
+
+const CATS = {
+  'In use':          'var(--inuse)',
+  'Available':       'var(--avail)',
+  'In shop, usable': 'var(--shop)',
+  'Not usable':      'var(--dead)'
+};
+const MANUAL = ['Available', 'In shop, usable', 'Not usable'];
 
 let data = { cars: [], lots: [], assignments: [] };
+let markers = [], lotMarkers = [], selected = null, swapFrom = null, panelMode = null;
 let hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem('vehHidden') || '[]')); } catch(e) {}
-function categoryOf(c, drv){ if (c.Condition && c.Condition !== 'Available') return c.Condition; return drv ? 'In use' : 'Available'; }
-document.addEventListener('DOMContentLoaded', () => {
-  const cats = [['In use', IN_USE]].concat(Object.entries(CONDITIONS));
-  const lg = document.getElementById('legend');
-  lg.innerHTML = cats.map(([k,v]) => `<span data-cat="${k}" class="${hidden.has(k) ? 'off' : ''}" style="--c:${v}">${k}</span>`).join('') + '<span style="--c:#fff;outline:2px solid #e02020;outline-offset:-2px;cursor:default">Needs attention</span>';
-  lg.querySelectorAll('[data-cat]').forEach(el => el.onclick = () => {
-    const k = el.dataset.cat; hidden.has(k) ? hidden.delete(k) : hidden.add(k);
-    el.classList.toggle('off', hidden.has(k));
-    localStorage.setItem('vehHidden', JSON.stringify([...hidden])); render();
-  });
-});
-let markers = [], lotMarkers = [], selected = null, swapFrom = null;
 
-const map = L.map('map', { zoomControl: true }).setView([42.25, -71.3], 11);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 }).addTo(map);
+const map = L.map('map', { zoomControl: false }).setView([42.25, -71.3], 11);
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19 }).addTo(map);
 
-function plateOf(code){
-  const c = String(code || '').replace(/[^A-Za-z0-9]+$/, '').trim();
-  const m = c.match(/([A-Z]?\d[A-Z0-9]*)$/);
-  return (m ? m[1] : c).toUpperCase();
-}
-function shortLot(a){ return String(a).split(',')[0]; }
-const CONDITIONS = { 'Available': '#2b8a3e', 'In shop, usable': '#e67700', 'Not usable': '#c92a2a' };
-const IN_USE = '#7a7a7a';
-const OIL_DAYS = 50, OIL_WARN = 3;
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+function plateOf(code){ const c = String(code || '').replace(/[^A-Za-z0-9]+$/, '').trim(); const m = c.match(/([A-Z]?\d[A-Z0-9]*)$/); return (m ? m[1] : c).toUpperCase(); }
+function shortLot(a){ return String(a || '').split(',')[0]; }
+function driverOf(plate){ const a = data.assignments.find(x => x.car && plateOf(x.car) === plate); return a ? a.driver : ''; }
+function codeOf(car){ const a = data.assignments.find(x => x.car && plateOf(x.car) === car.Plate); return a ? a.car : car.Code; }
+function catOf(c){ if (c.Condition && c.Condition !== 'Available') return c.Condition; return driverOf(c.Plate) ? 'In use' : 'Available'; }
+function colorOf(c){ return CATS[catOf(c)]; }
+function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
 function workDaysBetween(a, b){ let d = new Date(a), n = 0; d.setHours(0,0,0,0); b = new Date(b); b.setHours(0,0,0,0); while (d < b){ d.setDate(d.getDate()+1); if (d.getDay() % 6) n++; } return n; }
 function oilDaysLeft(c){ if (!c.OilChangedOn) return null; const t = new Date(c.OilChangedOn); if (isNaN(t)) return null; return (Number(c.OilIntervalDays) || OIL_DAYS) - workDaysBetween(t, new Date()); }
-function oilText(c){ const d = oilDaysLeft(c); if (d === null) return c.OilDue === 'Y' ? 'flagged' : ''; return d < 0 ? `overdue ${-d} days` : d === 0 ? 'due today' : `due in ${d} days`; }
+function oilText(c){ const d = oilDaysLeft(c); if (d === null) return c.OilDue === 'Y' ? 'Flagged for oil change' : ''; return d < 0 ? `Oil overdue by ${plural(-d,'day')}` : d === 0 ? 'Oil change due today' : `Oil change due in ${plural(d,'day')}`; }
+function oilShort(c){ const d = oilDaysLeft(c); if (d === null) return 'flagged'; return d < 0 ? `overdue ${plural(-d,'day')}` : d === 0 ? 'due today' : `in ${plural(d,'day')}`; }
 function oilDue(c){ const d = oilDaysLeft(c); return c.OilDue === 'Y' || (d !== null && d <= OIL_WARN); }
-function colorOf(c, drv){ if (c.Condition && c.Condition !== 'Available') return CONDITIONS[c.Condition]; return drv ? IN_USE : CONDITIONS['Available']; }
-const palette = ['#2a6fdb','#d9480f','#2b8a3e','#862e9c','#c92a2a','#0b7285','#e67700','#5c5f66','#a61e4d','#1864ab','#5f3dc4','#087f5b'];
-function colorFor(name){ let h = 0; for (const ch of name) h = (h*31 + ch.charCodeAt(0)) >>> 0; return palette[h % palette.length]; }
-function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
+function toast(t){ const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2200); }
 
-async function load(){
-  const r = await fetch(WEBAPP_URL); data = await r.json(); render();
-}
+async function load(){ const r = await fetch(WEBAPP_URL); data = await r.json(); render(); }
 async function post(body){
-  toast('Saving...');
+  toast('Saving…');
   const r = await fetch(WEBAPP_URL, { method: 'POST', body: JSON.stringify(body) });
   const j = await r.json();
   if (!j.ok) { toast('Error: ' + j.error); throw new Error(j.error); }
-  data = j; render(); toast('Saved');
-  return j;
+  data = j; render(); toast('Saved'); return j;
 }
 
-function driverOf(plate){ const a = data.assignments.find(x => x.car && plateOf(x.car) === plate); return a ? a.driver : ''; }
-function codeOf(car){ const a = data.assignments.find(x => x.car && plateOf(x.car) === car.Plate); return a ? a.car : car.Code; }
-function labelOf(car){ return codeOf(car); }
+/* ---------- filters ---------- */
+function renderFilters(){
+  const counts = {}; data.cars.forEach(c => { const k = catOf(c); counts[k] = (counts[k] || 0) + 1; });
+  $('filters').innerHTML = Object.entries(CATS).map(([k,v]) => `<div class="chip ${hidden.has(k) ? 'off' : ''}" data-cat="${k}" style="--c:${v}"><i></i>${k}<b>${counts[k] || 0}</b></div>`).join('');
+  $('filters').querySelectorAll('.chip').forEach(el => el.onclick = () => {
+    const k = el.dataset.cat; hidden.has(k) ? hidden.delete(k) : hidden.add(k);
+    localStorage.setItem('vehHidden', JSON.stringify([...hidden])); render();
+  });
+}
 
+/* ---------- map ---------- */
 function render(){
   markers.forEach(m => map.removeLayer(m)); lotMarkers.forEach(m => map.removeLayer(m)); markers = []; lotMarkers = [];
-  const byLot = {};
-  data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
-  const offMap = [];
+  renderFilters();
+  const byLot = {}; data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
   data.lots.forEach(lot => {
-    const cars = (byLot[lot.address] || []).filter(c => !hidden.has(categoryOf(c, driverOf(c.Plate))));
-    if (!lot.lat) { offMap.push({ lot, cars }); return; }
+    const cars = (byLot[lot.address] || []).filter(c => !hidden.has(catOf(c)));
+    if (!lot.lat) return;
     const ll = [lot.lat, lot.lng];
-    const lp = L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${shortLot(lot.address)} (${cars.length})</div>`, iconAnchor: [0, 10] }), interactive: false, zIndexOffset: 500 }).addTo(map);
-    lotMarkers.push(lp);
+    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12] }), interactive: false, zIndexOffset: 500 }).addTo(map));
+    if (map.getZoom() < SHOW_CARS_ZOOM) return;
     cars.forEach((c, i) => {
+      const col = Math.floor(i / COL_MAX), rowi = i % COL_MAX;
       const drv = driverOf(c.Plate);
-      const cls = 'car-pin' + (c.Status ? ' attn' : '');
-      const style = `background:${colorOf(c, drv)}`;
-      const html = `<div class="${cls}" style="${style}" data-plate="${c.Plate}"><span class="drv">${drv || 'spare'}</span><span class="seats">${c.Seats || ''}</span><span class="nm">${c.Tag || ''}</span>${oilDue(c) ? '<span class="oil" title="Oil change due">&#128738;</span>' : ''}</div>`;
-      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconAnchor: [0, -12 - i*20] }), zIndexOffset: 100 }).addTo(map);
+      const html = `<div class="car-pin ${c.Status ? 'attn' : ''}" style="--c:${colorOf(c)}">
+          <span class="bar"></span>
+          <span class="drv ${drv ? '' : 'spare'}">${esc(drv || 'spare')}</span>
+          <span class="tag">${esc(c.Tag || '')}</span>
+          ${oilDue(c) ? '<span class="ico" title="Oil change due">&#128738;</span>' : ''}
+          <span class="seats">${esc(c.Seats || '')}</span>
+        </div>`;
+      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconAnchor: [-col*198, -16 - rowi*27] }), zIndexOffset: 100 }).addTo(map);
       m.car = c;
-      m.bindTooltip(`${codeOf(c)}<br>Plate ${c.Plate}${c.Year ? '<br>' + [c.Year, c.Make, c.Model].filter(Boolean).join(' ') : ''}`, { direction: 'right', offset: [160, -4 - i*20] });
+      m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-6 - col*0, -4 - rowi*27] });
       m.on('click', () => swapFrom ? doSwap(c.Plate) : openCard(c.Plate));
       m.on('dragend', async e => {
         const p = e.target.getLatLng(); let best = null, bestD = 1e9;
         data.lots.forEach(l => { if (!l.lat) return; const d = map.distance(p, [l.lat, l.lng]); if (d < bestD) { bestD = d; best = l; } });
-        if (best && bestD < 600 && best.address !== c.Lot) {
-          try { await post({ action: 'setLot', plate: c.Plate, lot: best.address }); } catch(err) { render(); }
-        } else { render(); if (!best || bestD >= 600) toast('Drop closer to a lot'); }
+        if (best && bestD < 600 && best.address !== c.Lot) { try { await post({ action: 'setLot', plate: c.Plate, lot: best.address }); } catch(err) { render(); } }
+        else { render(); if (!best || bestD >= 600) toast('Drop closer to a lot'); }
       });
       markers.push(m);
     });
   });
-  // cars whose lot isn't in the Lots tab
-  const known = new Set(data.lots.map(l => l.address));
-  const orphans = data.cars.filter(c => !known.has(c.Lot));
-  if (orphans.length) offMap.push({ lot: { address: 'No lot set' }, cars: orphans });
-  renderOffMap(offMap);
-  const due = data.cars.filter(oilDue);
-  const ob = document.getElementById('oilbox');
-  ob.style.display = due.length ? 'block' : 'none';
-  ob.innerHTML = `<b>&#128738; Oil change due (${due.length})</b>` + due.map(c => `<div data-plate="${c.Plate}">${driverOf(c.Plate) || 'spare'} &middot; ${codeOf(c)}${oilText(c) ? ` &middot; ${oilText(c)}` : ''}</div>`).join('');
-  ob.querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
-  if (selected) openCard(selected, true);
+  if (!render.fitted && data.lots.some(l => l.lat)) { render.fitted = true; map.fitBounds(data.lots.filter(l => l.lat).map(l => [l.lat, l.lng]), { padding: [60, 60] }); }
+  const mappedLots = new Set(data.lots.filter(l => l.lat).map(l => l.address));
+  const attn = data.cars.filter(c => c.Status || oilDue(c) || catOf(c) === 'Not usable' || catOf(c) === 'In shop, usable' || !mappedLots.has(c.Lot)).length;
+  $('attnCount').textContent = attn; $('attnCount').classList.toggle('zero', !attn);
+  render.lastShow = map.getZoom() >= SHOW_CARS_ZOOM;
+  $('zoomhint').style.display = render.lastShow ? 'none' : 'block';
+  if (panelMode === 'car' && selected) openCard(selected, true);
+  if (panelMode === 'attn') openAttention();
 }
 
-function renderOffMap(list){
-  const el = document.getElementById('offmap') || Object.assign(document.createElement('div'), { id: 'offmap', className: 'lotlist' });
-  el.innerHTML = '';
-  list.forEach(({ lot, cars }) => {
-    if (!cars.length) return;
-    el.insertAdjacentHTML('beforeend', `<h3>${lot.address}</h3>` + cars.map(c => `<div data-plate="${c.Plate}">${labelOf(c)} <span class="muted">${driverOf(c.Plate) || 'spare'}</span></div>`).join(''));
-  });
-  el.querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
-  document.getElementById('side').appendChild(el);
+/* ---------- attention panel ---------- */
+function openAttention(){
+  panelMode = 'attn'; $('panel').classList.add('open');
+  const row = (c, right) => `<div class="arow" data-plate="${c.Plate}" style="--c:${colorOf(c)}"><i></i><div class="t"><b>${esc(driverOf(c.Plate) || 'Spare')} · ${esc(c.Tag || codeOf(c))}</b><span>${esc(shortLot(c.Lot))}${c.Status ? ' · ' + esc(c.Status.split('\n')[0]) : ''}</span></div><div class="r">${right}</div></div>`;
+  const oil = data.cars.filter(oilDue).sort((a,b) => (oilDaysLeft(a) == null ? 99 : oilDaysLeft(a)) - (oilDaysLeft(b) == null ? 99 : oilDaysLeft(b)));
+  const stat = data.cars.filter(c => c.Status);
+  const shop = data.cars.filter(c => catOf(c) === 'In shop, usable' || catOf(c) === 'Not usable');
+  const mapped = new Set(data.lots.filter(l => l.lat).map(l => l.address));
+  const offmap = data.cars.filter(c => !mapped.has(c.Lot));
+  const sec = (title, list, right) => `<h3>${title} <span class="n">${list.length}</span></h3>` + (list.length ? list.map(c => row(c, right(c))).join('') : '<div class="note" style="padding:4px 10px">Nothing here</div>');
+  $('pbody').innerHTML = `
+    <div class="ph"><button class="close" id="closep">×</button><h2>Needs attention</h2><div class="sub">Click a car to open it</div></div>
+    <div class="pb alist">
+      ${sec('Oil change', oil, oilShort)}
+      ${sec('Reported issues', stat, () => '')}
+      ${sec('Out of service / in shop', shop, catOf)}
+      ${sec('Not on the map', offmap, c => c.Lot || 'no lot')}
+    </div>`;
+  $('closep').onclick = closePanel;
+  $('pbody').querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
 }
+function closePanel(){ $('panel').classList.remove('open'); panelMode = null; selected = null; }
 
+/* ---------- car card ---------- */
 async function doSwap(plateB){
   const plateA = swapFrom; swapFrom = null; document.body.style.cursor = '';
   if (plateA === plateB) { toast('Swap cancelled'); return; }
@@ -180,74 +260,106 @@ async function doSwap(plateB){
 
 function openCard(plate, keep){
   const c = data.cars.find(x => x.Plate === plate); if (!c) return;
-  selected = plate;
-  const drv = driverOf(plate);
+  selected = plate; panelMode = 'car'; $('panel').classList.add('open');
+  const drv = driverOf(plate), cat = catOf(c);
   const drivers = data.assignments.map(a => a.driver).sort();
-  const opts = ['<option value="">Spare (no driver)</option>'].concat(drivers.map(d => `<option ${d === drv ? 'selected' : ''}>${d}</option>`)).join('');
-  const lotOpts = data.lots.map(l => `<option ${l.address === c.Lot ? 'selected' : ''}>${l.address}</option>`).join('');
-  const f = k => (c[k] || '').toString().replace(/"/g, '&quot;');
-  document.getElementById('panel').innerHTML = `
-  <div class="card">
-    <h2>${labelOf(c)}</h2>
-    <div class="sub">${[c.Year, c.Make, c.Model].filter(Boolean).join(' ')} ${c.Plate ? '&nbsp; plate ' + c.Plate : ''}</div>
-    <div class="row">
-      <div><label>Tag shown on the map (e.g. broken horn)</label><input id="f_Tag" value="${f('Tag')}"></div>
-      <div style="flex:0 0 80px"><label>Seats</label><input id="f_Seats" value="${f('Seats')}"></div>
-    </div>
-    <label>Condition</label><select id="f_Condition">${Object.keys(CONDITIONS).map(k => `<option ${k === c.Condition ? 'selected' : ''}>${k}</option>`).join('')}</select>
-    <label>Driver</label><select id="f_driver">${opts}</select>
-    <label>Parked at</label><select id="f_lot">${lotOpts}<option value="__new">Type a new address...</option></select>
-    <input id="f_newlot" placeholder="e.g. 168 Linden St, Wellesley, MA" style="display:none;margin-top:6px">
-    <label>Needs attention / status</label><textarea id="f_Status" class="status">${f('Status')}</textarea>
-    <label>Quirks</label><textarea id="f_Quirks">${f('Quirks')}</textarea>
-    <div class="row">
-      <div><label>Inspection due</label><input id="f_InspectionDue" value="${f('InspectionDue')}"></div>
-      <div><label>Oil changed on</label><input id="f_OilChangedOn" value="${f('OilChangedOn')}" placeholder="M/D/YYYY"></div>
-      <div><label>Oil interval (work days)</label><input id="f_OilIntervalDays" value="${f('OilIntervalDays') || OIL_DAYS}"></div>
-    </div>
-    <p class="muted">${oilText(c) ? 'Oil change ' + oilText(c) : 'No oil change date yet'}</p>
-    <label>Keys</label><input id="f_Keys" value="${f('Keys')}">
-    <label>Exterior damage</label><textarea id="f_Exterior">${f('Exterior')}</textarea>
-    <label>Stickers</label><textarea id="f_Stickers">${f('Stickers')}</textarea>
-    <div class="row">
-      <button class="btn" id="save">Save changes</button>
-      ${oilDue(c) ? '<button class="btn secondary" id="oildone">Oil changed</button>' : '<button class="btn secondary" id="oilflag">Flag for oil</button>'}
-    </div>
-    <button class="btn secondary" id="swap" style="width:100%">Swap with another car (then click it on the map)</button>
-    <label>Add a note</label><input id="f_note" placeholder="e.g. oil change due; scheduled">
-    <button class="btn secondary" id="addnote">Add note</button>
-    <label>History</label><div class="log">${(c.Log || '').replace(/</g,'&lt;') || '<span class="muted">No history yet</span>'}</div>
-    <p class="muted">Last updated ${c.Updated || ''}</p>
-  </div>`;
-  if (!keep && c.Lot) { const l = data.lots.find(x => x.address === c.Lot); if (l && l.lat) map.setView([l.lat, l.lng], Math.max(map.getZoom(), 14)); }
+  const f = k => esc(c[k]);
+  const hist = (c.Log || '').split('\n').filter(Boolean).map(l => { const m = l.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4}):\s*(.*)$/); return m ? `<div><span class="d">${esc(m[1])}</span>${esc(m[2])}</div>` : `<div>${esc(l)}</div>`; }).join('');
+  const ot = oilText(c);
+  const condOpts = (drv ? [`<option value="Available" ${cat === 'In use' ? 'selected' : ''}>In use</option>`] : [])
+    .concat(MANUAL.filter(k => !(drv && k === 'Available')).map(k => `<option ${k === c.Condition ? 'selected' : ''}>${k}</option>`)).join('');
 
-  document.getElementById('f_lot').onchange = e => { document.getElementById('f_newlot').style.display = e.target.value === '__new' ? 'block' : 'none'; };
-  document.getElementById('save').onclick = async () => {
-    const fields = {}; ['Tag','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = document.getElementById('f_' + k).value);
-    const newDrv = document.getElementById('f_driver').value, newLot = document.getElementById('f_lot').value;
+  $('pbody').innerHTML = `
+  <div class="ph">
+    <button class="close" id="closep">×</button>
+    <h2>${esc(drv || 'Spare')}${c.Tag ? ' · ' + esc(c.Tag) : ''}</h2>
+    <div class="sub">${esc(codeOf(c))} · ${esc([c.Year, c.Make, c.Model].filter(Boolean).join(' '))} · plate ${esc(c.Plate)}</div>
+    <div class="chips">
+      <span class="pill" style="--c:${colorOf(c)}"><i></i>${esc(cat)}</span>
+      <span class="pill">${esc(c.Seats || '?')} seats</span>
+      <span class="pill">${esc(shortLot(c.Lot))}</span>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="swap">Swap with another car</button>
+    ${oilDue(c) ? '<button class="btn warn" id="oildone">Oil changed</button>' : '<button class="btn" id="oilflag">Flag for oil</button>'}
+  </div>
+  <div class="pb">
+    <div class="oilline ${oilDue(c) ? '' : 'ok'}"><span>${ot || 'No oil change date on file'}</span><span>${c.OilChangedOn ? 'changed ' + esc(c.OilChangedOn) : ''}</span></div>
+
+    <div class="sec"><h4>Assignment</h4>
+      <div class="g2">
+        <div class="f"><label>Driver</label><select id="f_driver"><option value="">Spare (no driver)</option>${drivers.map(d => `<option ${d === drv ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select></div>
+        <div class="f"><label>Condition</label><select id="f_Condition">${condOpts}</select></div>
+      </div>
+      <div class="f" style="margin-top:10px"><label>Parked at</label>
+        <select id="f_lot">${data.lots.map(l => `<option ${l.address === c.Lot ? 'selected' : ''}>${esc(l.address)}</option>`).join('')}<option value="__new">Type a new address…</option></select>
+        <input id="f_newlot" placeholder="e.g. 168 Linden St, Wellesley, MA" style="display:none;margin-top:6px">
+      </div>
+    </div>
+
+    <div class="sec"><h4>Right now</h4>
+      <div class="f"><label>Tag on the map (short, e.g. broken horn)</label><input id="f_Tag" value="${f('Tag')}"></div>
+      <div class="f"><label>Needs attention / status</label><textarea id="f_Status" class="status">${f('Status')}</textarea></div>
+    </div>
+
+    <div class="sec"><h4>Car details</h4>
+      <div class="f"><label>Quirks</label><textarea id="f_Quirks">${f('Quirks')}</textarea></div>
+      <div class="g2">
+        <div class="f"><label>Seats</label><input id="f_Seats" value="${f('Seats')}"></div>
+        <div class="f"><label>Keys</label><input id="f_Keys" value="${f('Keys')}"></div>
+      </div>
+      <div class="g2" style="margin-top:10px">
+        <div class="f"><label>Inspection due</label><input id="f_InspectionDue" value="${f('InspectionDue')}"></div>
+        <div class="f"><label>Oil interval (work days)</label><input id="f_OilIntervalDays" value="${f('OilIntervalDays') || OIL_DAYS}"></div>
+      </div>
+      <div class="f" style="margin-top:10px"><label>Oil changed on</label><input id="f_OilChangedOn" value="${f('OilChangedOn')}" placeholder="M/D/YYYY"></div>
+      <div class="f"><label>Exterior damage</label><textarea id="f_Exterior">${f('Exterior')}</textarea></div>
+      <div class="f"><label>Stickers</label><textarea id="f_Stickers">${f('Stickers')}</textarea></div>
+    </div>
+
+    <div class="sec"><h4>History</h4>
+      <div class="addnote"><input id="f_note" placeholder="Add a note…"><button class="btn" id="addnote">Add</button></div>
+      <div class="hist" style="margin-top:12px">${hist || '<div class="note">No history yet</div>'}</div>
+    </div>
+
+    <div class="savebar"><button class="btn primary" id="save">Save changes</button></div>
+  </div>`;
+
+  if (!keep && c.Lot) { const l = data.lots.find(x => x.address === c.Lot); if (l && l.lat) map.panTo([l.lat, l.lng]); }
+
+  $('closep').onclick = closePanel;
+  $('f_lot').onchange = e => { $('f_newlot').style.display = e.target.value === '__new' ? 'block' : 'none'; };
+  $('swap').onclick = () => { swapFrom = plate; document.body.style.cursor = 'crosshair'; toast('Now click the car to swap with'); };
+  const od = $('oildone'); if (od) od.onclick = () => post({ action: 'oilDone', plate });
+  const of = $('oilflag'); if (of) of.onclick = () => post({ action: 'oilFlag', plate });
+  $('addnote').onclick = async () => { const t = $('f_note').value.trim(); if (!t) return; await post({ action: 'addLog', plate, text: t }); };
+  $('f_note').onkeydown = e => { if (e.key === 'Enter') $('addnote').click(); };
+  $('save').onclick = async () => {
+    const fields = {}; ['Tag','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = $('f_' + k).value);
+    const newDrv = $('f_driver').value, newLot = $('f_lot').value;
     await post({ action: 'saveCar', plate, fields });
-    if (newLot === '__new') { const a = document.getElementById('f_newlot').value.trim(); if (a) await post({ action: 'addLot', plate, lot: a }); }
+    if (newLot === '__new') { const a = $('f_newlot').value.trim(); if (a) await post({ action: 'addLot', plate, lot: a }); }
     else if (newLot !== c.Lot) await post({ action: 'setLot', plate, lot: newLot });
     if (newDrv !== drv) await post({ action: 'setDriver', plate, driver: newDrv });
   };
-  document.getElementById('swap').onclick = () => { swapFrom = plate; document.body.style.cursor = 'crosshair'; toast('Now click the car to swap with'); };
-  const od = document.getElementById('oildone'); if (od) od.onclick = () => post({ action: 'oilDone', plate });
-  const of = document.getElementById('oilflag'); if (of) of.onclick = () => post({ action: 'oilFlag', plate });
-  document.getElementById('addnote').onclick = async () => {
-    const t = document.getElementById('f_note').value.trim(); if (!t) return;
-    await post({ action: 'addLog', plate, text: t });
-  };
 }
 
-document.getElementById('search').addEventListener('input', e => {
+/* ---------- search / keys ---------- */
+$('search').addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase();
+  let first = null;
   markers.forEach(m => {
     const c = m.car, hit = !q || codeOf(c).toLowerCase().includes(q) || c.Plate.toLowerCase().includes(q) || driverOf(c.Plate).toLowerCase().includes(q) || (c.Tag || '').toLowerCase().includes(q);
-    m.getElement().style.opacity = hit ? 1 : 0.15;
+    m.getElement().style.opacity = hit ? 1 : 0.12;
+    if (hit && !first) first = m;
   });
-  if (q) { const m = markers.find(m => m.getElement().style.opacity == 1); if (m) map.panTo(m.getLatLng()); }
+  if (q && first) map.panTo(first.getLatLng());
 });
+$('attnbtn').onclick = () => panelMode === 'attn' ? closePanel() : openAttention();
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (swapFrom) { swapFrom = null; document.body.style.cursor = ''; toast('Swap cancelled'); } else closePanel(); } });
 
+map.on('zoomend', () => { const now = map.getZoom() >= SHOW_CARS_ZOOM; if (now !== render.lastShow) { render.lastShow = now; render(); } });
 load().catch(e => toast('Could not load: ' + e));
 </script>
 </body>
