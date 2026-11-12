@@ -34,8 +34,10 @@
   #attnbtn .n.zero{background:var(--line);color:var(--muted)}
 
   /* pins */
-  .lot-pin{display:inline-block;background:var(--accent);color:#fff;font-weight:600;font-size:12px;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
-  .lot-pin b{opacity:.65;font-weight:500;margin-left:6px}
+  .lot-box{background:rgba(255,255,255,.85);border:1.5px solid #cfd4db;border-radius:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+  .lot-pin{display:inline-block;color:#374151;font-weight:600;font-size:12px;padding:0;white-space:nowrap}
+  .leader{stroke:#9ca3af;stroke-width:1.5;stroke-dasharray:3 3}
+  .lot-pin b{color:var(--muted);font-weight:600;margin-left:6px}
   .car-pin{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11.5px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
   .car-pin .bar{width:5px;align-self:stretch;background:var(--c);flex:none}
   .car-pin .drv{font-weight:700;flex:none}
@@ -112,20 +114,19 @@
 
 <div id="top">
   <div class="brand">Vehicles</div>
-  <input id="search" placeholder="Search driver, car, plate, tag">
+  <input id="search" placeholder="Search driver, name, code, plate">
   <div id="filters"></div>
   <button id="attnbtn">Attention <span class="n zero" id="attnCount">0</span></button>
 </div>
 
 <div id="panel"><div id="pbody"></div></div>
-<div id="zoomhint">Zoom in to see cars</div>
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyTaQa0lB9Dmtg2NM0hJ3J8cOXHS2mYp57yeDbOPgojf4CfoZtCQ9oclNVL7x34RxQw/exec';
 const OIL_DAYS = 50, OIL_WARN = 3;
-const SHOW_CARS_ZOOM = 13;   // below this zoom only lot labels show
+const SHOW_CARS_ZOOM = 0;    // cars show at every zoom (raise to 13 to hide them when zoomed out)
 const COL_MAX = 6;           // cars per column under a lot
 
 const CATS = {
@@ -142,7 +143,7 @@ let hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem('
 
 const map = L.map('map', { zoomControl: false }).setView([42.25, -71.3], 11);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19, opacity: 0.35 }).addTo(map);
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -185,41 +186,67 @@ function render(){
   markers.forEach(m => map.removeLayer(m)); lotMarkers.forEach(m => map.removeLayer(m)); markers = []; lotMarkers = [];
   renderFilters();
   const byLot = {}; data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
-  data.lots.forEach(lot => {
+  const showCars = map.getZoom() >= SHOW_CARS_ZOOM;
+  const STRIP_W = 150, ROW_H = 27, HEAD = 30;
+  // one block per lot: size by how many strips it will show
+  const blocks = data.lots.filter(l => l.lat).map(lot => {
     const cars = (byLot[lot.address] || []).filter(c => !hidden.has(catOf(c)));
-    if (!lot.lat) return;
-    const ll = [lot.lat, lot.lng];
+    const cols = showCars ? Math.max(1, Math.ceil(cars.length / COL_MAX)) : 1, rows = showCars ? Math.min(cars.length, COL_MAX) : 0;
+    const p = map.latLngToLayerPoint([lot.lat, lot.lng]);
+    return { lot, cars, cols, rows, w: Math.max(150, cols * (STRIP_W + 8)) + 16, h: HEAD + rows * ROW_H + 14, x: p.x, y: p.y, ox: p.x, oy: p.y };
+  });
+  // push overlapping blocks apart (simple relaxation)
+  for (let it = 0; it < 60; it++){
+    let moved = false;
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++){
+      const a = blocks[i], b = blocks[j];
+      const dx = (a.x + a.w/2) - (b.x + b.w/2), dy = (a.y + a.h/2) - (b.y + b.h/2);
+      const ox = (a.w + b.w)/2 + 12 - Math.abs(dx), oy = (a.h + b.h)/2 + 12 - Math.abs(dy);
+      if (ox > 0 && oy > 0){
+        moved = true;
+        if (ox < oy){ const s = (dx >= 0 ? 1 : -1) * ox / 2; a.x += s; b.x -= s; }
+        else { const s = (dy >= 0 ? 1 : -1) * oy / 2; a.y += s; b.y -= s; }
+      }
+    }
+    if (!moved) break;
+  }
+  const sz = map.getSize(), tl = map.containerPointToLayerPoint([0, 0]);
+  blocks.forEach(bk => { bk.x = Math.min(Math.max(bk.x, tl.x + 10), tl.x + sz.x - bk.w - 10); bk.y = Math.min(Math.max(bk.y, tl.y + 100), tl.y + sz.y - bk.h - 10); });
+  blocks.forEach(bk => {
+    const { lot, cars } = bk;
+    const ll = map.layerPointToLatLng([bk.x, bk.y]);
+    const shifted = Math.hypot(bk.x - bk.ox, bk.y - bk.oy) > 14;
+    if (shifted) lotMarkers.push(L.polyline([[lot.lat, lot.lng], ll], { className: 'leader', interactive: false }).addTo(map));
+    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-box" style="width:${bk.w}px;height:${bk.h}px"></div>`, iconAnchor: [10, 24], iconSize: null }), interactive: false, zIndexOffset: 50 }).addTo(map));
     lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12], iconSize: null }), interactive: false, zIndexOffset: 500 }).addTo(map));
-    if (map.getZoom() < SHOW_CARS_ZOOM) return;
+    if (!showCars) return;
     cars.forEach((c, i) => {
       const col = Math.floor(i / COL_MAX), rowi = i % COL_MAX;
       const drv = driverOf(c.Plate);
       const html = `<div class="car-pin ${c.Status ? 'attn' : ''}" style="--c:${colorOf(c)}">
           <span class="bar"></span>
           <span class="drv ${drv ? '' : 'spare'}">${esc(drv || 'unassigned')}</span>
-          <span class="tag">${esc(c.Tag || '')}</span>
+          <span class="tag">${esc(c.Name || '')}</span>
           ${oilDue(c) ? '<span class="ico" title="Oil change due">&#128738;</span>' : ''}
-          <span class="seats">${esc(c.Seats || '')}</span>
         </div>`;
-      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconSize: null, iconAnchor: [-col*198, -16 - rowi*27] }), zIndexOffset: 100 }).addTo(map);
+      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconSize: null, iconAnchor: [-col*(STRIP_W + 8), -16 - rowi*ROW_H] }), zIndexOffset: 100 }).addTo(map);
       m.car = c;
-      m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-6 - col*0, -4 - rowi*27] });
+      m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-6, -4 - rowi*ROW_H] });
       m.on('click', () => swapFrom ? doSwap(c.Plate) : openCard(c.Plate));
       m.on('dragend', async e => {
         const p = e.target.getLatLng(); let best = null, bestD = 1e9;
-        data.lots.forEach(l => { if (!l.lat) return; const d = map.distance(p, [l.lat, l.lng]); if (d < bestD) { bestD = d; best = l; } });
-        if (best && bestD < 600 && best.address !== c.Lot) { try { await post({ action: 'setLot', plate: c.Plate, lot: best.address }); } catch(err) { render(); } }
-        else { render(); if (!best || bestD >= 600) toast('Drop closer to a lot'); }
+        blocks.forEach(b2 => { const d = map.distance(p, map.layerPointToLatLng([b2.x + b2.w/2, b2.y + b2.h/2])); if (d < bestD) { bestD = d; best = b2.lot; } });
+        if (best && best.address !== c.Lot) { try { await post({ action: 'setLot', plate: c.Plate, lot: best.address }); } catch(err) { render(); } }
+        else render();
       });
       markers.push(m);
     });
   });
-  if (!render.fitted && data.lots.some(l => l.lat)) { render.fitted = true; map.fitBounds(data.lots.filter(l => l.lat).map(l => [l.lat, l.lng]), { padding: [60, 60] }); }
+  if (!render.fitted && data.lots.some(l => l.lat)) { render.fitted = true; map.fitBounds(data.lots.filter(l => l.lat).map(l => [l.lat, l.lng]), { padding: [60, 60] }); render(); return; }
   const mappedLots = new Set(data.lots.filter(l => l.lat).map(l => l.address));
   const attn = data.cars.filter(c => c.Status || oilDue(c) || catOf(c) === 'Not usable' || catOf(c) === 'In shop, usable' || !mappedLots.has(c.Lot)).length;
   $('attnCount').textContent = attn; $('attnCount').classList.toggle('zero', !attn);
   render.lastShow = map.getZoom() >= SHOW_CARS_ZOOM;
-  $('zoomhint').style.display = render.lastShow ? 'none' : 'block';
   if (panelMode === 'car' && selected) openCard(selected, true);
   if (panelMode === 'attn') openAttention();
 }
@@ -227,7 +254,7 @@ function render(){
 /* ---------- attention panel ---------- */
 function openAttention(){
   panelMode = 'attn'; $('panel').classList.add('open');
-  const row = (c, right) => `<div class="arow" data-plate="${c.Plate}" style="--c:${colorOf(c)}"><i></i><div class="t"><b>${esc(driverOf(c.Plate) || 'Spare')} · ${esc(c.Tag || codeOf(c))}</b><span>${esc(shortLot(c.Lot))}${c.Status ? ' · ' + esc(c.Status.split('\n')[0]) : ''}</span></div><div class="r">${right}</div></div>`;
+  const row = (c, right) => `<div class="arow" data-plate="${c.Plate}" style="--c:${colorOf(c)}"><i></i><div class="t"><b>${esc(c.Name || codeOf(c))} · ${esc(driverOf(c.Plate) || 'Unassigned')}</b><span>${esc(shortLot(c.Lot))}${c.Status ? ' · ' + esc(c.Status.split('\n')[0]) : ''}</span></div><div class="r">${right}</div></div>`;
   const oil = data.cars.filter(oilDue).sort((a,b) => (oilDaysLeft(a) == null ? 99 : oilDaysLeft(a)) - (oilDaysLeft(b) == null ? 99 : oilDaysLeft(b)));
   const stat = data.cars.filter(c => c.Status);
   const shop = data.cars.filter(c => catOf(c) === 'In shop, usable' || catOf(c) === 'Not usable');
@@ -272,11 +299,10 @@ function openCard(plate, keep){
   $('pbody').innerHTML = `
   <div class="ph">
     <button class="close" id="closep">×</button>
-    <h2>${esc(drv || 'Spare')}${c.Tag ? ' · ' + esc(c.Tag) : ''}</h2>
-    <div class="sub">${esc(codeOf(c))} · ${esc([c.Year, c.Make, c.Model].filter(Boolean).join(' '))} · plate ${esc(c.Plate)}</div>
+    <h2>${esc(c.Name || '')}</h2>
+    <div class="sub">${esc(drv || 'Unassigned')} · ${esc(codeOf(c))} · ${esc([c.Year, c.Make, c.Model].filter(Boolean).join(' '))}</div>
     <div class="chips">
       <span class="pill" style="--c:${colorOf(c)}"><i></i>${esc(cat)}</span>
-      <span class="pill">${esc(c.Seats || '?')} seats</span>
       <span class="pill">${esc(shortLot(c.Lot))}</span>
     </div>
   </div>
@@ -299,7 +325,7 @@ function openCard(plate, keep){
     </div>
 
     <div class="sec"><h4>Right now</h4>
-      <div class="f"><label>Tag on the map (short, e.g. broken horn)</label><input id="f_Tag" value="${f('Tag')}"></div>
+      <div class="f"><label>Name on the map (yours to change, e.g. White12-Hornissue)</label><input id="f_Name" value="${f('Name')}"></div>
       <div class="f"><label>Needs attention / status</label><textarea id="f_Status" class="status">${f('Status')}</textarea></div>
     </div>
 
@@ -337,7 +363,7 @@ function openCard(plate, keep){
   $('addnote').onclick = async () => { const t = $('f_note').value.trim(); if (!t) return; await post({ action: 'addLog', plate, text: t }); };
   $('f_note').onkeydown = e => { if (e.key === 'Enter') $('addnote').click(); };
   $('save').onclick = async () => {
-    const fields = {}; ['Tag','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = $('f_' + k).value);
+    const fields = {}; ['Name','Seats','Condition','Status','Quirks','Keys','InspectionDue','OilChangedOn','OilIntervalDays','Exterior','Stickers'].forEach(k => fields[k] = $('f_' + k).value);
     let newDrv = $('f_driver').value; if (newDrv === '__other') newDrv = $('f_newdrv').value.trim();
     const newLot = $('f_lot').value;
     await post({ action: 'saveCar', plate, fields });
@@ -352,7 +378,7 @@ $('search').addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase();
   let first = null;
   markers.forEach(m => {
-    const c = m.car, hit = !q || codeOf(c).toLowerCase().includes(q) || c.Plate.toLowerCase().includes(q) || driverOf(c.Plate).toLowerCase().includes(q) || (c.Tag || '').toLowerCase().includes(q);
+    const c = m.car, hit = !q || codeOf(c).toLowerCase().includes(q) || c.Plate.toLowerCase().includes(q) || driverOf(c.Plate).toLowerCase().includes(q) || (c.Name || '').toLowerCase().includes(q);
     m.getElement().style.opacity = hit ? 1 : 0.12;
     if (hit && !first) first = m;
   });
@@ -361,7 +387,7 @@ $('search').addEventListener('input', e => {
 $('attnbtn').onclick = () => panelMode === 'attn' ? closePanel() : openAttention();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (swapFrom) { swapFrom = null; document.body.style.cursor = ''; toast('Swap cancelled'); } else closePanel(); } });
 
-map.on('zoomend', () => { const now = map.getZoom() >= SHOW_CARS_ZOOM; if (now !== render.lastShow) { render.lastShow = now; render(); } });
+map.on('zoomend moveend', () => render());
 load().catch(e => toast('Could not load: ' + e));
 </script>
 </body>
