@@ -129,7 +129,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbygXflGHCjVWEZXYSaFUowUoS4ITWX5NZDHAHnGcCbKKspN4M8E7zxx1Q1ju_PVS_fj/exec';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwWKiueT-qZVm9Akatsp3qs9yySYl8cozHdqSjTSRwULM-as-fTUnoKSYdPG3mYVJiv/exec';
 const OIL_DAYS = 50, OIL_WARN = 3;
 const SHOW_CARS_ZOOM = 0;    // cars show at every zoom (raise to 13 to hide them when zoomed out)
 const COL_MAX = 6;           // cars per column under a lot
@@ -154,7 +154,7 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&c
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 function plateOf(code){ const c = String(code || '').replace(/[^A-Za-z0-9]+$/, '').trim(); const m = c.match(/([A-Z]?\d[A-Z0-9]*)$/); return (m ? m[1] : c).toUpperCase(); }
-function shortLot(a){ return String(a || '').split(',')[0]; }
+function shortLot(a){ const l = data.lots.find(x => x.address === a); return (l && l.name) ? l.name : String(a || '').split(',')[0]; }
 function driverOf(plate){ const c = data.cars.find(x => x.Plate === plate); return c ? (c.Driver || '') : ''; }
 function codeOf(car){ return car.Code; }
 function catOf(c){ if (c.Condition && c.Condition !== 'Available') return c.Condition; return driverOf(c.Plate) ? 'In use' : 'Available'; }
@@ -299,7 +299,7 @@ function openFind(){
   $('pbody').innerHTML = `
     <div class="ph"><button class="close" id="closep">×</button><h2>Find a car</h2><div class="sub">Nearest first</div></div>
     <div class="findbar">
-      <select id="find_lot">${lotsWithCoords.map(l => `<option ${l.address === (from||{}).address ? 'selected' : ''}>${esc(l.address)}</option>`).join('')}</select>
+      <select id="find_lot">${lotsWithCoords.map(l => `<option value="${esc(l.address)}" ${l.address === (from||{}).address ? 'selected' : ''}>${esc(l.name ? l.name + ' (' + l.address.split(',')[0] + ')' : l.address)}</option>`).join('')}</select>
       <div><label><input type="checkbox" id="find_avail" ${st.avail ? 'checked' : ''}> Available only</label><label><input type="checkbox" id="find_vans" ${st.vans ? 'checked' : ''}> Vans only</label></div>
     </div>
     <div class="pb alist">${list.length ? list.map(row).join('') : '<div class="note" style="padding:10px">No cars match</div>'}</div>`;
@@ -356,7 +356,7 @@ function openCard(plate, keep){
         <div class="f"><label>Condition</label><select id="f_Condition">${condOpts}</select></div>
       </div>
       <div class="f" style="margin-top:10px"><label>Parked at</label>
-        <select id="f_lot">${data.lots.map(l => `<option ${l.address === c.Lot ? 'selected' : ''}>${esc(l.address)}</option>`).join('')}<option value="__new">Type a new address…</option></select>
+        <select id="f_lot">${data.lots.map(l => `<option value="${esc(l.address)}" ${l.address === c.Lot ? 'selected' : ''}>${esc(l.name ? l.name + ' (' + l.address.split(',')[0] + ')' : l.address)}</option>`).join('')}<option value="__new">Type a new address…</option></select>
         <input id="f_newlot" placeholder="e.g. 168 Linden St, Wellesley, MA" style="display:none;margin-top:6px">
       </div>
     </div>
