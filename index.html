@@ -29,16 +29,20 @@
   .chip.off{opacity:.4}
   .chip i{width:9px;height:9px;border-radius:50%;background:var(--c);display:inline-block}
   .chip b{font-weight:600;color:var(--muted);margin-left:2px}
-  #attnbtn{margin-left:auto;background:#fff;border:0;border-radius:var(--r);padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12);display:flex;gap:8px;align-items:center}
+  #findbtn{background:#fff;border:0;border-radius:var(--r);padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  .findbar{display:grid;grid-template-columns:1fr;gap:8px;padding:12px 20px 4px}
+  .findbar select{padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .findbar label{font-size:13px;display:inline-flex;align-items:center;gap:6px;margin-right:14px}
+  #attnbtn{background:#fff;border:0;border-radius:var(--r);padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12);display:flex;gap:8px;align-items:center}
   #attnbtn .n{background:var(--attn);color:#fff;border-radius:10px;padding:1px 7px;font-size:12px}
   #attnbtn .n.zero{background:var(--line);color:var(--muted)}
 
   /* pins */
-  .lot-box{background:rgba(255,255,255,.85);border:1.5px solid #cfd4db;border-radius:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
-  .lot-pin{display:inline-block;color:#374151;font-weight:600;font-size:12px;padding:0;white-space:nowrap}
+  .lot-box{background:rgba(255,255,255,.88);border:1.5px solid #cfd4db;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+  .lot-pin{display:inline-block;color:#374151;font-weight:600;font-size:11.5px;padding:1px 6px;white-space:nowrap;line-height:16px;background:rgba(255,255,255,.85);border-radius:5px}
   .leader{stroke:#9ca3af;stroke-width:1.5;stroke-dasharray:3 3}
   .lot-pin b{color:var(--muted);font-weight:600;margin-left:6px}
-  .car-pin{display:inline-flex;align-items:center;gap:6px;height:21px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
+  .car-pin{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
   .car-pin .bar{width:5px;align-self:stretch;background:var(--c);flex:none}
   .car-pin .drv{font-weight:700;flex:none}
   .car-pin .drv.spare{color:var(--muted);font-weight:500;font-style:italic}
@@ -116,6 +120,7 @@
   <div class="brand">Vehicles</div>
   <input id="search" placeholder="Search driver, name, code, plate">
   <div id="filters"></div>
+  <button id="findbtn" style="margin-left:auto">Find a car</button>
   <button id="attnbtn">Attention <span class="n zero" id="attnCount">0</span></button>
 </div>
 
@@ -187,20 +192,24 @@ function render(){
   renderFilters();
   const byLot = {}; data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
   const showCars = map.getZoom() >= SHOW_CARS_ZOOM;
-  const STRIP_W = 135, ROW_H = 24, HEAD = 28;
+  const ROW_H = 22, HEAD = 22, PAD = 0;
   // one block per lot: size by how many strips it will show
   const blocks = data.lots.filter(l => l.lat).map(lot => {
     const cars = (byLot[lot.address] || []).filter(c => !hidden.has(catOf(c)));
     const cols = showCars ? Math.max(1, Math.ceil(cars.length / COL_MAX)) : 1, rows = showCars ? Math.min(cars.length, COL_MAX) : 0;
     const p = map.latLngToLayerPoint([lot.lat, lot.lng]);
-    return { lot, cars, cols, rows, w: Math.max(140, cols * (STRIP_W + 8)) + 16, h: HEAD + rows * ROW_H + 12, x: p.x, y: p.y, ox: p.x, oy: p.y };
+    const longest = cars.reduce((m, c) => Math.max(m, ((driverOf(c.Plate) || 'unassigned') + (c.Name || '')).length), 8);
+    const sw = Math.round(longest * 6.4 + 46);                       // strip width estimate from text length
+    const titleW = Math.round(shortLot(lot.address).length * 7 + 30);
+    const w = Math.max(titleW, cols * sw + (cols - 1) * 6) + PAD * 2;
+    return { lot, cars, cols, rows, sw, w, h: HEAD + rows * ROW_H + PAD, x: p.x, y: p.y, ox: p.x, oy: p.y };
   });
   // place each block at the nearest free spot to its real location (big lots first), always on screen
   const sz = map.getSize(), tl = map.containerPointToLayerPoint([0, 0]);
   const minX = tl.x + 10, minY = tl.y + 80, maxX = tl.x + sz.x - 10, maxY = tl.y + sz.y - 10;
   const placed = [];
   const fits = (x, y, b) => x >= minX && y >= minY && x + b.w <= maxX && y + b.h <= maxY &&
-    !placed.some(p => x < p.x + p.w + 12 && x + b.w + 12 > p.x && y < p.y + p.h + 12 && y + b.h + 12 > p.y);
+    !placed.some(p => x < p.x + p.w + 18 && x + b.w + 18 > p.x && y < p.y + p.h + 18 && y + b.h + 18 > p.y);
   blocks.sort((a, b) => b.cars.length - a.cars.length).forEach(b => {
     let x = Math.min(Math.max(b.ox, minX), maxX - b.w), y = Math.min(Math.max(b.oy, minY), maxY - b.h);
     if (!fits(x, y, b)){
@@ -219,8 +228,7 @@ function render(){
     const ll = map.layerPointToLatLng([bk.x, bk.y]);
     const shifted = Math.hypot(bk.x - bk.ox, bk.y - bk.oy) > 40;
     if (shifted) lotMarkers.push(L.polyline([[lot.lat, lot.lng], ll], { className: 'leader', interactive: false }).addTo(map));
-    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-box" style="width:${bk.w}px;height:${bk.h}px"></div>`, iconAnchor: [10, 24], iconSize: null }), interactive: false, zIndexOffset: 50 }).addTo(map));
-    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12], iconSize: null }), interactive: false, zIndexOffset: 500 }).addTo(map));
+    lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [-PAD, -4], iconSize: null }), interactive: false, zIndexOffset: 500 }).addTo(map));
     if (!showCars) return;
     cars.forEach((c, i) => {
       const col = Math.floor(i / COL_MAX), rowi = i % COL_MAX;
@@ -231,9 +239,9 @@ function render(){
           <span class="tag">${esc(c.Name || codeOf(c))}</span>
           ${oilDue(c) ? '<span class="ico" title="Oil change due">&#128738;</span>' : ''}
         </div>`;
-      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconSize: null, iconAnchor: [-col*(STRIP_W + 8), -16 - rowi*ROW_H] }), zIndexOffset: 100 }).addTo(map);
+      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: '', html, iconSize: null, iconAnchor: [-PAD - col*(bk.sw + 6), -(HEAD + rowi*ROW_H)] }), zIndexOffset: 100 }).addTo(map);
       m.car = c;
-      m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-6, -4 - rowi*ROW_H] });
+      m.bindTooltip(`<b>${esc(codeOf(c))}</b><br>Plate ${esc(c.Plate)}${c.Year ? '<br>' + esc([c.Year, c.Make, c.Model].filter(Boolean).join(' ')) : ''}`, { direction: 'left', offset: [-PAD - 4, -(HEAD + rowi*ROW_H) + 10] });
       m.on('click', () => swapFrom ? doSwap(c.Plate) : openCard(c.Plate));
       m.on('dragend', async e => {
         const p = e.target.getLatLng(); let best = null, bestD = 1e9;
@@ -251,6 +259,7 @@ function render(){
   render.lastShow = map.getZoom() >= SHOW_CARS_ZOOM;
   if (panelMode === 'car' && selected) openCard(selected, true);
   if (panelMode === 'attn') openAttention();
+  if (panelMode === 'find') openFind();
 }
 
 /* ---------- attention panel ---------- */
@@ -272,6 +281,32 @@ function openAttention(){
       ${sec('Not on the map', offmap, c => c.Lot || 'no lot')}
     </div>`;
   $('closep').onclick = closePanel;
+  $('pbody').querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
+}
+/* ---------- find a car ---------- */
+function milesBetween(a, b){ const R = 3958.8, dLat = (b.lat - a.lat) * Math.PI/180, dLng = (b.lng - a.lng) * Math.PI/180; const s = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180) * Math.sin(dLng/2)**2; return 2 * R * Math.asin(Math.sqrt(s)); }
+function openFind(){
+  panelMode = 'find'; $('panel').classList.add('open');
+  const st = openFind.state || (openFind.state = { lot: (data.lots.find(l => l.lat) || {}).address, avail: true, vans: false });
+  const lotsWithCoords = data.lots.filter(l => l.lat);
+  const from = lotsWithCoords.find(l => l.address === st.lot) || lotsWithCoords[0];
+  const isVan = c => /van/i.test(c.Name || '') || /sienna|odyssey|caravan|van/i.test((c.Model || '') + ' ' + (c.Code || ''));
+  let list = data.cars.map(c => { const l = lotsWithCoords.find(x => x.address === c.Lot); return { c, mi: (l && from) ? milesBetween(from, l) : null }; });
+  if (st.avail) list = list.filter(x => !driverOf(x.c.Plate) && catOf(x.c) !== 'Not usable');
+  if (st.vans) list = list.filter(x => isVan(x.c));
+  list.sort((a, b) => (a.mi == null ? 999 : a.mi) - (b.mi == null ? 999 : b.mi));
+  const row = x => `<div class="arow" data-plate="${x.c.Plate}" style="--c:${colorOf(x.c)}"><i></i><div class="t"><b>${esc(x.c.Name || codeOf(x.c))} · ${esc(driverOf(x.c.Plate) || 'available')}</b><span>${esc(shortLot(x.c.Lot))}${catOf(x.c) !== 'In use' && catOf(x.c) !== 'Available' ? ' · ' + esc(catOf(x.c)) : ''}</span></div><div class="r">${x.mi == null ? 'no location' : x.mi < 0.1 ? 'here' : x.mi.toFixed(1) + ' mi'}</div></div>`;
+  $('pbody').innerHTML = `
+    <div class="ph"><button class="close" id="closep">×</button><h2>Find a car</h2><div class="sub">Nearest first</div></div>
+    <div class="findbar">
+      <select id="find_lot">${lotsWithCoords.map(l => `<option ${l.address === (from||{}).address ? 'selected' : ''}>${esc(l.address)}</option>`).join('')}</select>
+      <div><label><input type="checkbox" id="find_avail" ${st.avail ? 'checked' : ''}> Available only</label><label><input type="checkbox" id="find_vans" ${st.vans ? 'checked' : ''}> Vans only</label></div>
+    </div>
+    <div class="pb alist">${list.length ? list.map(row).join('') : '<div class="note" style="padding:10px">No cars match</div>'}</div>`;
+  $('closep').onclick = closePanel;
+  $('find_lot').onchange = e => { st.lot = e.target.value; openFind(); };
+  $('find_avail').onchange = e => { st.avail = e.target.checked; openFind(); };
+  $('find_vans').onchange = e => { st.vans = e.target.checked; openFind(); };
   $('pbody').querySelectorAll('[data-plate]').forEach(d => d.onclick = () => openCard(d.dataset.plate));
 }
 function closePanel(){ $('panel').classList.remove('open'); panelMode = null; selected = null; }
@@ -387,9 +422,10 @@ $('search').addEventListener('input', e => {
   if (q && first) map.panTo(first.getLatLng());
 });
 $('attnbtn').onclick = () => panelMode === 'attn' ? closePanel() : openAttention();
+$('findbtn').onclick = () => panelMode === 'find' ? closePanel() : openFind();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (swapFrom) { swapFrom = null; document.body.style.cursor = ''; toast('Swap cancelled'); } else closePanel(); } });
 
-map.on('zoomend moveend', () => render());
+map.on('zoomend', () => render());
 load().catch(e => toast('Could not load: ' + e));
 </script>
 </body>
