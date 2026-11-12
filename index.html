@@ -38,7 +38,7 @@
   .lot-pin{display:inline-block;color:#374151;font-weight:600;font-size:12px;padding:0;white-space:nowrap}
   .leader{stroke:#9ca3af;stroke-width:1.5;stroke-dasharray:3 3}
   .lot-pin b{color:var(--muted);font-weight:600;margin-left:6px}
-  .car-pin{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11.5px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
+  .car-pin{display:inline-flex;align-items:center;gap:6px;height:21px;padding:0 8px 0 0;white-space:nowrap;background:#fff;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:11px;cursor:grab;overflow:hidden;border:1.5px solid #fff}
   .car-pin .bar{width:5px;align-self:stretch;background:var(--c);flex:none}
   .car-pin .drv{font-weight:700;flex:none}
   .car-pin .drv.spare{color:var(--muted);font-weight:500;font-style:italic}
@@ -187,37 +187,37 @@ function render(){
   renderFilters();
   const byLot = {}; data.cars.forEach(c => { (byLot[c.Lot] = byLot[c.Lot] || []).push(c); });
   const showCars = map.getZoom() >= SHOW_CARS_ZOOM;
-  const STRIP_W = 150, ROW_H = 27, HEAD = 30;
+  const STRIP_W = 135, ROW_H = 24, HEAD = 28;
   // one block per lot: size by how many strips it will show
   const blocks = data.lots.filter(l => l.lat).map(lot => {
     const cars = (byLot[lot.address] || []).filter(c => !hidden.has(catOf(c)));
     const cols = showCars ? Math.max(1, Math.ceil(cars.length / COL_MAX)) : 1, rows = showCars ? Math.min(cars.length, COL_MAX) : 0;
     const p = map.latLngToLayerPoint([lot.lat, lot.lng]);
-    return { lot, cars, cols, rows, w: Math.max(150, cols * (STRIP_W + 8)) + 16, h: HEAD + rows * ROW_H + 14, x: p.x, y: p.y, ox: p.x, oy: p.y };
+    return { lot, cars, cols, rows, w: Math.max(140, cols * (STRIP_W + 8)) + 16, h: HEAD + rows * ROW_H + 12, x: p.x, y: p.y, ox: p.x, oy: p.y };
   });
-  // push overlapping blocks apart while keeping them on screen
+  // place each block at the nearest free spot to its real location (big lots first), always on screen
   const sz = map.getSize(), tl = map.containerPointToLayerPoint([0, 0]);
-  const clamp = bk => { bk.x = Math.min(Math.max(bk.x, tl.x + 10), tl.x + sz.x - bk.w - 10); bk.y = Math.min(Math.max(bk.y, tl.y + 80), tl.y + sz.y - bk.h - 10); };
-  blocks.forEach(clamp);
-  for (let it = 0; it < 120; it++){
-    let moved = false;
-    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++){
-      const a = blocks[i], b = blocks[j];
-      const dx = (a.x + a.w/2) - (b.x + b.w/2), dy = (a.y + a.h/2) - (b.y + b.h/2);
-      const ox = (a.w + b.w)/2 + 14 - Math.abs(dx), oy = (a.h + b.h)/2 + 14 - Math.abs(dy);
-      if (ox > 0 && oy > 0){
-        moved = true;
-        if (ox < oy){ const s = (dx >= 0 ? 1 : -1) * ox / 2; a.x += s; b.x -= s; }
-        else { const s = (dy >= 0 ? 1 : -1) * oy / 2; a.y += s; b.y -= s; }
-        clamp(a); clamp(b);
-      }
+  const minX = tl.x + 10, minY = tl.y + 80, maxX = tl.x + sz.x - 10, maxY = tl.y + sz.y - 10;
+  const placed = [];
+  const fits = (x, y, b) => x >= minX && y >= minY && x + b.w <= maxX && y + b.h <= maxY &&
+    !placed.some(p => x < p.x + p.w + 12 && x + b.w + 12 > p.x && y < p.y + p.h + 12 && y + b.h + 12 > p.y);
+  blocks.sort((a, b) => b.cars.length - a.cars.length).forEach(b => {
+    let x = Math.min(Math.max(b.ox, minX), maxX - b.w), y = Math.min(Math.max(b.oy, minY), maxY - b.h);
+    if (!fits(x, y, b)){
+      let found = false;
+      for (let r = 20; r <= 900 && !found; r += 20)
+        for (let a = 0; a < 360 && !found; a += 20){
+          const tx = b.ox + r * Math.cos(a * Math.PI / 180), ty = b.oy + r * Math.sin(a * Math.PI / 180);
+          const cx = Math.min(Math.max(tx, minX), maxX - b.w), cy = Math.min(Math.max(ty, minY), maxY - b.h);
+          if (fits(cx, cy, b)) { x = cx; y = cy; found = true; }
+        }
     }
-    if (!moved) break;
-  }
+    b.x = x; b.y = y; placed.push(b);
+  });
   blocks.forEach(bk => {
     const { lot, cars } = bk;
     const ll = map.layerPointToLatLng([bk.x, bk.y]);
-    const shifted = Math.hypot(bk.x - bk.ox, bk.y - bk.oy) > 14;
+    const shifted = Math.hypot(bk.x - bk.ox, bk.y - bk.oy) > 40;
     if (shifted) lotMarkers.push(L.polyline([[lot.lat, lot.lng], ll], { className: 'leader', interactive: false }).addTo(map));
     lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-box" style="width:${bk.w}px;height:${bk.h}px"></div>`, iconAnchor: [10, 24], iconSize: null }), interactive: false, zIndexOffset: 50 }).addTo(map));
     lotMarkers.push(L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="lot-pin">${esc(shortLot(lot.address))}<b>${cars.length}</b></div>`, iconAnchor: [0, 12], iconSize: null }), interactive: false, zIndexOffset: 500 }).addTo(map));
